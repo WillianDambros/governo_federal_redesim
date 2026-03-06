@@ -1,0 +1,117 @@
+###################################################### redesim #################
+
+dir.create("data")
+
+anos <- 2019:as.integer(lubridate::year(lubridate::today()))
+meses <- formatC(1:12, width = 2, flag = '0')
+
+vetor_comparacao <- vector(mode = 'list', length = length(anos) * length(meses))
+
+contador <- 1
+
+for (i in seq_along(anos)) {
+  for (j in seq_along(meses)) {
+    
+    vetor_comparacao[[contador]] <- paste0("tempos-abertura-Brasil",
+                                           as.integer(meses[j]), anos[i],
+                                           ".xlsx")
+    
+    print(vetor_comparacao[[contador]])
+    
+    contador <- contador + 1
+    
+  }
+  
+}
+
+vetor_comparacao <- vetor_comparacao |> unlist()
+
+diretorio_comparacao <- paste0(getwd(), "/data") |> dir()
+
+vetor_download <- vetor_comparacao[!vetor_comparacao %in%  diretorio_comparacao]
+
+vetor_download_data <- stringr::str_extract(vetor_download,
+                                            "(?<=Brasil)\\d+(?=\\.xlsx)")
+
+anos <- stringr::str_extract(vetor_download_data, "\\d{4}$")
+
+meses <- stringr::str_remove(vetor_download_data, "\\d{4}$")
+
+for(i in seq_along(vetor_download)){
+  tryCatch({
+    curl::curl_download(
+      paste0("https://estatistica.redesim.gov.br/",
+             "tempos-abertura-redesim/exportar/solicitacoes?mes=", meses[i],
+             "&ano=", anos[i]),
+      quiet = T,
+      destfile = paste0("data/", vetor_download[i])
+    )}, error = function(err) {warning("file could not be downloaded")})
+}
+
+setwd("data")
+
+arquivos <- fs::dir_ls(glob = "tempos-abertura-Brasil*.xlsx")
+
+arquivo <- vector(mode = "list",
+                  length = length(arquivos))
+arquivo |> dplyr::glimpse()
+
+for(i in seq_along(arquivos)){
+  
+  arquivo[[i]] <- readxl::read_excel(arquivos[i], sheet = "dados", skip = 1)
+  
+}
+
+arquivo <- arquivo |> dplyr::bind_rows()
+
+arquivo <- arquivo |> dplyr::mutate(across(contains("DATA") | contains("DT."),
+                                           ~ lubridate::dmy(.x)))
+
+arquivo <- arquivo |> dplyr::mutate(across(matches("^(HORA|HH\\.)"),
+                                           ~ lubridate::hms(.x)))
+
+datas <- names(arquivo)[grepl("DATA|DT\\.", names(arquivo))]
+
+horas <- names(arquivo)[grepl("^(HORA|HH\\.)", names(arquivo))]
+
+base_datas <- datas |> stringr::str_remove("^DATA ") |>
+  stringr::str_remove("^DT\\.?\\s")
+
+base_horas <- horas |> stringr::str_remove("^HORA ") |>
+  stringr::str_remove("^HH\\.?\\s")
+
+pares <- match(base_datas, base_horas)
+
+for (i in which(!is.na(pares))) {
+  
+  novo_nome <- paste0("DATETIME_", base_datas[i])
+  
+  arquivo[[novo_nome]] <- arquivo[[datas[i]]] + arquivo[[horas[pares[i]]]]
+  
+}
+
+arquivo |> dplyr::glimpse()
+
+arquivo <- arquivo |>
+  dplyr::select(
+    -matches("^(DATA|DT\\.|HORA|HH\\.)")
+  )
+
+
+source("X:/POWER BI/NOVOCAGED/conexao.R")
+
+RPostgres::dbListTables(conexao)
+
+schema_name <- "governo_federal"
+
+table_name <- "governo_federal_redesim"
+
+DBI::dbSendQuery(conexao, paste0("CREATE SCHEMA IF NOT EXISTS ", schema_name))
+
+RPostgres::dbWriteTable(conexao,
+                        name = DBI::Id(schema = schema_name,
+                                       table = table_name),
+                        value = arquivo,
+                        row.names = FALSE, overwrite = TRUE)
+
+RPostgres::dbDisconnect(conexao)
