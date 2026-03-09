@@ -98,6 +98,50 @@ arquivo <- arquivo |>
   )
 
 
+arquivo |> dplyr::glimpse()
+
+# Using the particular produce decoder to adding more information in the novocaged
+
+compilado_decodificador_endereço <-
+  paste0("https://github.com/WillianDambros/data_source/raw/",
+         "refs/heads/main/compilado_decodificador.xlsx")
+
+decodificador_endereco <- paste0(getwd(), "/compilado_decodificador.xlsx")
+
+curl::curl_download(compilado_decodificador_endereço,
+                    decodificador_endereco)
+
+"compilado_decodificador.xlsx" |> readxl::excel_sheets()
+
+# reading, selecting and merging variables about a teme
+
+cnae_sedec <- 
+  readxl::read_excel("compilado_decodificador.xlsx",
+                     sheet =  "cnae", col_types = "text") |> #dplyr::glimpse()
+  dplyr::select("cnae_subclasse_codigo_7d",
+                "cnae_secao_decodificado",
+                "cnae_atividades_caracteristicas_turismo",
+                "cnae_grande_grupamento_novocaged")
+
+arquivo <- arquivo |> 
+  dplyr::left_join(cnae_sedec,
+                   by = dplyr::join_by(`ATIVIDADE  ECONÔMICA PRINCIPAL` ==
+                                         cnae_subclasse_codigo_7d))
+
+
+natureza_juridica_sedec <-
+  readxl::read_excel("compilado_decodificador.xlsx",
+                     sheet = "natureza_juridica", col_types = "text") |> #dplyr::glimpse()
+  dplyr::select("nj_codigo_3_digitos",
+                "nj_denominacao_grande_grupo",
+                "nj_denominacao")
+
+arquivo <- arquivo |>
+  dplyr::left_join(natureza_juridica_sedec,
+                   by = dplyr::join_by(`NAT. JUR.` ==
+                                         nj_codigo_3_digitos))
+
+
 source("X:/POWER BI/NOVOCAGED/conexao.R")
 
 RPostgres::dbListTables(conexao)
