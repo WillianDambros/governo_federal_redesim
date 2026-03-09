@@ -121,7 +121,8 @@ cnae_sedec <-
   dplyr::select("cnae_subclasse_codigo_7d",
                 "cnae_secao_decodificado",
                 "cnae_atividades_caracteristicas_turismo",
-                "cnae_grande_grupamento_novocaged")
+                "cnae_grande_grupamento_novocaged",
+                "cnae_subclasse_decodificado")
 
 arquivo <- arquivo |> 
   dplyr::left_join(cnae_sedec,
